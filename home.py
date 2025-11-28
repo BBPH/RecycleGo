@@ -75,7 +75,7 @@ def gpt(prompt):    #response 생성 함수, 필요없는 정보도 제공하는
     )
     return response.output_text
 
-def analyze_image(client, image_file):
+def analyze_image(client, image_file):    # 물건 최대 2개정도 제대로 인식함.
     bytes_data = image_file.read()
     b64 = base64.b64encode(bytes_data).decode("utf-8")
 
@@ -122,6 +122,10 @@ def show_chat(m):   #chat show 함수, 어떤 인터페이스 쓸지 고민 필�
     with st.chat_message(m['role']):
         st.markdown(m["content"])
 
+def show_image(m):    # 유저 답변 뜨는거 고쳐야됨.
+    with st.chat_message(m['role']):
+        if m['role']=="assistant":
+            st.markdown(m["content"])
 
 
 
@@ -241,7 +245,7 @@ if st.session_state["user_id"] is not None:
     if premium:
         st.success("⭐ 프리미엄 사용자입니다!")
         if "image_record" not in st.session_state:
-            pass
+            st.session_state["image_record"] = [{"role": "developer", "content": """너는 한국의 분리수거 도우미야. 다른 내용 말고, 사용자가 말한 품목만을 어떻게 분리수거해야 하는지 주어진 자료를 통해 간단하고 정확하게 알려줘."""}]
     else:
         st.info("일반 사용자입니다. (데모에서는 'admin' 계정 등을 프리미엄으로 가정)")
 
@@ -252,12 +256,12 @@ if st.session_state["user_id"] is not None:
                 try:
                     explanation = analyze_image(client, uploaded)
                     p1 = {"role":"user", "content": explanation}
-                    st.session_state["record"].append(p1)
-                    show_chat(p1)
-                    response = gpt(st.session_state["record"])
+                    st.session_state["image_record"].append(p1)
+                    show_image(p1)
+                    response = gpt(st.session_state["image_record"])
                     p2 = {"role":"assistant", "content": response}
-                    st.session_state["record"].append(p2)
-                    show_chat(p2)
+                    st.session_state["image_record"].append(p2)
+                    show_image(p2)
                 except Exception as e:
                     st.error(f"이미지 분석 중 오류가 발생했습니다: {e}")
 
