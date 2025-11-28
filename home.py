@@ -19,34 +19,7 @@ import db
 
 ### function list
 
-db.init_db()
-db.seed_missions()
 
-st.set_page_config(page_title="분리수Go!", page_icon="♻️")
-
-# --- 세션 기본값 세팅 ---
-if "user_id" not in st.session_state:
-    st.session_state["user_id"] = None
-    st.session_state["username"] = None
-
-if "api_key" not in st.session_state:
-    st.session_state["api_key"] = ""
-
-# --- 사이드바: API Key 입력 ---
-with st.sidebar:
-    st.subheader("OpenAI API Key")
-    api_key = st.text_input("API Key", type="password", value=st.session_state["api_key"])
-    if api_key:
-        st.session_state["api_key"] = api_key
-        client = OpenAI(api_key=api_key)
-        st.session_state["client"] = client
-        st.caption("✅ 키 입력 완료")
-    else:
-        st.warning("API Key를 입력해야 챗봇을 사용할 수 있어요.")
-
-client = st.session_state.get("client")
-if client is None:
-    st.stop()  # 키 없으면 여기서 막고 끝
 
 # --- 로그인 / 회원가입 UI 함수 ---
 def show_auth():
@@ -81,7 +54,14 @@ def show_auth():
                 st.session_state["user_id"] = user_id
                 st.session_state["username"] = li_name
                 st.success("로그인 성공!")
+                st.session_state["show_login"] = False
+                st.session_state["show_chat"] = True
                 st.rerun()  # 로그인 후 메인 화면으로 바로 전환
+
+def show_INFO():
+    st.title("Information")
+    st.write("정보 출처 : 생활법령정보, 제품·포장재 분리배출요령")
+    st.write("개발 언어 : Python")
 
 def gpt(prompt):    #response 생성 함수, 필요없는 정보도 제공하는 이슈 있음(해결인지 아닌지 긴가민가).
     response = client.responses.create(
@@ -107,13 +87,12 @@ def analyze_image(client, image_file):
                 "content": [
                     {
                         "type": "input_text",
-                        "text": "이 물건이 어떤 재질인지 추정하고, 한국 분리수거 기준으로 어떻게 버려야 할지 설명해줘."
+                        "text": """이 물건이 어떤 물건인지 추리해서, 어떤 물건인지만 알려줘. 예를 들어서, 유리컵으로 보이는 사진을 입력받으면, "유리컵" 이라고만 답해줘."""
                     },
                     {
                         "type": "input_image",
-                        "image_url": {
-                            "url": f"data:image/jpeg;base64,{b64}"
-                        }
+                        "image_url": f"data:image/jpeg;base64,{b64}",
+                        "detail": "auto"
                     }
                 ]
             }
@@ -146,104 +125,202 @@ def show_chat(m):   #chat show 함수, 어떤 인터페이스 쓸지 고민 필�
 
 
 
-### User Interface     -------------------------------------------------------------------------------------------------------------------------------
+### User Interface     ------------------------------------------------------------------------------------------------------------------------------
 
 
 
+db.init_db()
+db.seed_missions()
 
+st.set_page_config(page_title="분리수Go!", page_icon="♻️")
 
-# --- 로그인 안 되어 있으면 여기서 막고 로그인 화면만 보여줌 ---
-if st.session_state["user_id"] is None:
-    show_auth()
+# --- 세션 기본값 세팅 ---
+if "user_id" not in st.session_state:
+    st.session_state["user_id"] = None
+    st.session_state["username"] = None
+
+if "api_key" not in st.session_state:
+    st.session_state["api_key"] = ""
+
+if "show_INFO" not in st.session_state:
+    st.session_state["show_INFO"] = False
+
+if "show_login" not in st.session_state:
+    st.session_state["show_login"] = False
+
+if "show_chat" not in st.session_state:
+    st.session_state["show_chat"] = True
+
+# --- 사이드바 ---
+with st.sidebar:
+    st.title(":blue[분]:green[리]:yellow[수]:rainbow[Go!]")
+
+    # 🔹 API Key 입력 (항상 보이게)
+    st.subheader("OpenAI API Key")
+    api_key = st.text_input(
+        "API Key",
+        type="password",
+        value=st.session_state.get("api_key", "")
+    )
+    if api_key:
+        st.session_state["api_key"] = api_key
+        # 키가 새로 입력되었거나 바뀌었으면 client 갱신
+        if "client" not in st.session_state or st.session_state.get("client_key") != api_key:
+            st.session_state["client"] = OpenAI(api_key=api_key)
+            st.session_state["client_key"] = api_key
+        st.caption("✅ 키 입력 완료")
+    else:
+        st.warning("API Key를 입력해야 챗봇을 사용할 수 있어요.")
+
+    st.divider()
+
+    if st.button("챗봇"):
+        st.session_state["show_chat"] = True
+        st.session_state["show_login"] = False
+
+    st.divider()
+
+    # 🔹 로그인 / 로그아웃
+    if st.session_state["user_id"] is None:
+        if st.button("로그인", key="sidebar_login"):
+            st.session_state["show_login"] = True
+    else:
+        user_id = st.session_state["user_id"]
+        username = st.session_state["username"]
+
+        # 🔹 현재 프리미엄 여부 표시
+        premium_now = db.is_premium(user_id)
+        if premium_now:
+            st.caption("⭐ 현재 프리미엄 계정입니다.")
+        else:
+            st.caption("일반 계정입니다.")
+
+        # 🔹 프리미엄 토글 버튼 (개발용)
+        if st.button("현재 계정 프리미엄 토글", key="sidebar_premium_toggle"):
+            db.set_premium(user_id, not premium_now)
+            st.rerun()
+
+        if st.button("로그아웃", key="sidebar_logout"):
+            st.session_state["user_id"] = None
+            st.session_state["username"] = None
+            st.session_state["show_login"] = False
+            st.rerun()
+
+    # 🔹 INFO
+    if st.button("INFO", key="sidebar_info"):
+        st.session_state["show_INFO"] = True
+
+# --- INFO 페이지 ---
+if st.session_state["show_INFO"]:
+    show_INFO()
+    st.session_state["show_INFO"] = False   # 한 번 보여주고 끄기
+
+# --- 로그인 화면 (선택 사항) ---
+if st.session_state["user_id"] is None and st.session_state["show_login"]:
+    show_auth()   # ✅ 메인 영역에 로그인/회원가입 UI 렌더링
+    st.session_state["show_chat"] = False
+
+# --- OpenAI client 체크 ---
+client = st.session_state.get("client")
+if client is None:
+    st.warning("사이드바에서 OpenAI API Key를 먼저 입력해 주세요.")
     st.stop()
 
 # --- 여기부터는 '로그인된 상태' 전용 메인 화면 ---
-username = st.session_state["username"]
-user_id = st.session_state["user_id"]
 
-total_points = db.get_points(user_id)
-today_points = db.get_today_points(user_id)
-title = db.get_title(total_points)
+if st.session_state["user_id"] is not None:
+    username = st.session_state["username"]
+    user_id = st.session_state["user_id"]
 
-st.title(f":blue[분]:green[리]:yellow[수]:rainbow[Go!] 🌱 – {username}님 환영합니다!")
+    total_points = db.get_points(user_id)
+    today_points = db.get_today_points(user_id)
+    title = db.get_title(total_points)
 
-premium = db.is_premium(user_id)
+    premium = db.is_premium(user_id)   # 프리미엄으로 바꿔주는 기능 필요
 
-if premium:
-    st.success("⭐ 프리미엄 사용자입니다!")
-else:
-    st.info("일반 사용자입니다. (데모에서는 'admin' 계정 등을 프리미엄으로 가정)")
+    if premium:
+        st.success("⭐ 프리미엄 사용자입니다!")
+        if "image_record" not in st.session_state:
+            pass
+    else:
+        st.info("일반 사용자입니다. (데모에서는 'admin' 계정 등을 프리미엄으로 가정)")
+
+    if premium:                                                        # sidebar에 기능 분리. (또는 pages 활용)
+        uploaded = st.file_uploader("품목 사진 업로드", type=["jpg", "jpeg", "png"])
+        if uploaded is not None:
+            with st.spinner("이미지 분석 중..."):
+                try:
+                    explanation = analyze_image(client, uploaded)
+                    p1 = {"role":"user", "content": explanation}
+                    st.session_state["record"].append(p1)
+                    show_chat(p1)
+                    response = gpt(st.session_state["record"])
+                    p2 = {"role":"assistant", "content": response}
+                    st.session_state["record"].append(p2)
+                    show_chat(p2)
+                except Exception as e:
+                    st.error(f"이미지 분석 중 오류가 발생했습니다: {e}")
 
 # 유저의 현재 포인트 / 칭호 / 오늘 포인트
 
-col1, col2, col3, col4 = st.columns([2, 2, 3, 1])
-with col1:
-    st.metric("총 마일리지", total_points)
-with col2:
-    st.metric("오늘 획득", today_points)
-with col3:
-    st.write(f"현재 칭호: **{title}**")
-with col4:
-    if st.button("로그아웃", key="logout"):
-        st.session_state["user_id"] = None
-        st.session_state["username"] = None
-        del st.session_state["record"]
-        st.rerun()
+    col1, col2, col3, col4 = st.columns([2, 2, 3, 1])
+    with col1:
+        st.metric("총 마일리지", total_points)
+    with col2:
+        st.metric("오늘 획득", today_points)
+    with col3:
+        st.write(f"현재 칭호: **{title}**")
 
-st.divider()
+    st.divider()
 
-st.subheader("오늘의 미션")
+    st.subheader("오늘의 미션")
 
-missions = db.get_or_create_today_missions(user_id)
-if not missions:
-    st.info("오늘은 미션이 없습니다.")
+    missions = db.get_or_create_today_missions(user_id)
+    if not missions:
+        st.info("오늘은 미션이 없습니다.")
+    else:
+        done = sum(1 for m in missions if m["completed"])
+        total = len(missions)
+        st.write(f"오늘 미션 진행도: **{done} / {total}**")
+
+        cols = st.columns(total)
+        for col, m in zip(cols, missions):
+            with col:
+                st.write(f"✅ {m['description']}")
+                st.write(f"보상: **+{m['reward']}점**")
+                if m["completed"]:
+                    st.success("완료됨")
+                else:
+                    if st.button("완료하기", key=f"mission_{m['user_mission_id']}"):
+                        db.complete_mission(m["user_mission_id"])
+                        st.success("미션 완료!")
+                        st.rerun()
+
+    st.divider()
+
 else:
-    done = sum(1 for m in missions if m["completed"])
-    total = len(missions)
-    st.write(f"오늘 미션 진행도: **{done} / {total}**")
+    # 🔓 Guest 모드 안내
+    st.info("현재 Guest 모드입니다. 로그인하면 마일리지, 일일 미션, 프리미엄 기능을 사용할 수 있습니다.")
+    username = "Guest"
+    st.divider()
 
-    cols = st.columns(total)
-    for col, m in zip(cols, missions):
-        with col:
-            st.write(f"✅ {m['description']}")
-            st.write(f"보상: **+{m['reward']}점**")
-            if m["completed"]:
-                st.success("완료됨")
-            else:
-                if st.button("완료하기", key=f"mission_{m['user_mission_id']}"):
-                    db.complete_mission(m["user_mission_id"])
-                    st.success("미션 완료!")
-                    st.rerun()
+if st.session_state["show_chat"]:
+    st.title(f":blue[분]:green[리]:yellow[수]:rainbow[Go!] 🌱 – {username}님 환영합니다!")
 
-st.divider()
+    vector_store = create_vector(client)
+    st.session_state["vector_store_id"] = vector_store.id
 
-if 'api_key' not in st.session_state:
-    st.session_state["api_key"] = ''
+    if "record" not in st.session_state:
+        st.session_state["record"] = [{"role": "developer", "content": """너는 한국의 분리수거 도우미야. 다른 내용 말고, 사용자가 말한 품목만을 어떻게 분리수거해야 하는지 주어진 자료를 통해 간단하고 정확하게 알려줘."""}]
 
-vector_store = create_vector(client)
-st.session_state["vector_store_id"] = vector_store.id
+    for m in st.session_state["record"][1:]:
+        show_chat(m)
 
-if "record" not in st.session_state:
-    st.session_state["record"] = [{"role": "developer", "content": """너는 한국의 분리수거 도우미야. 다른 내용 말고, 사용자가 말한 품목만을 어떻게 분리수거해야 하는지 주어진 자료를 통해 간단하고 정확하게 알려줘."""}]
-
-for m in st.session_state["record"][1:]:
-    show_chat(m)
-
-if prompt := st.chat_input("분리수거 하고싶은 품목을 입력하세요."):   #실제 prompt 입력
-    p1 = {"role":"user", "content": prompt}
-    st.session_state["record"].append(p1)
-    show_chat(p1)
-    response = gpt(st.session_state["record"])
-    p2 = {"role":"assistant", "content": response}
-    st.session_state["record"].append(p2)
-    show_chat(p2)
-
-if premium:
-    uploaded = st.file_uploader("품목 사진 업로드", type=["jpg", "jpeg", "png"])
-    if uploaded is not None:
-        with st.spinner("이미지 분석 중..."):
-            try:
-                explanation = analyze_image(client, uploaded)
-                st.markdown(explanation)
-            except Exception as e:
-                st.error(f"이미지 분석 중 오류가 발생했습니다: {e}")
+    if prompt := st.chat_input("분리수거 하고싶은 품목을 입력하세요."):   # 실제 prompt 입력, sidebar에 기능 분리. (또는 pages 활용)
+        p1 = {"role":"user", "content": prompt}
+        st.session_state["record"].append(p1)
+        show_chat(p1)
+        response = gpt(st.session_state["record"])
+        p2 = {"role":"assistant", "content": response}
+        st.session_state["record"].append(p2)
+        show_chat(p2)

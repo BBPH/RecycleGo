@@ -13,7 +13,6 @@ def get_conn():
     """DB 연결 반환 (사용 후 꼭 conn.close())"""
     return sqlite3.connect(DB_PATH)
 
-
 def init_db():
     conn = get_conn()
     cur = conn.cursor()
@@ -65,7 +64,6 @@ def init_db():
     conn.commit()
     conn.close()
 
-
 def create_user(username: str, password: str, region: str | None = None):
     """회원가입: username, password, region 저장"""
     conn = get_conn()
@@ -87,7 +85,6 @@ def create_user(username: str, password: str, region: str | None = None):
 
     conn.commit()
     conn.close()
-
 
 def authenticate(username: str, password: str):
     """
@@ -115,7 +112,6 @@ def authenticate(username: str, password: str):
 
     return None
 
-
 def get_points(user_id: int) -> int:
     """해당 유저의 현재 포인트 조회"""
     conn = get_conn()
@@ -127,7 +123,6 @@ def get_points(user_id: int) -> int:
     if row is None:
         return 0
     return row[0]
-
 
 def add_points(user_id: int, delta: int):
     """마일리지 증감 (delta만큼 더하기)"""
@@ -285,7 +280,6 @@ def complete_mission(user_mission_id: int):
     conn.commit()
     conn.close()
 
-
 def get_today_points(user_id: int) -> int:
     """오늘 완료한 미션들의 reward 합."""
     today = datetime.now().date().isoformat()
@@ -324,3 +318,14 @@ def is_premium(user_id: int) -> bool:
     row = cur.fetchone()
     conn.close()
     return bool(row[0]) if row else False
+
+def set_premium(user_id: int, value: bool):
+    """현재 계정의 프리미엄 여부를 설정한다."""
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE users SET is_premium = ? WHERE id = ?",
+        (1 if value else 0, user_id),
+    )
+    conn.commit()
+    conn.close()
