@@ -4,6 +4,7 @@ from datetime import datetime
 import bcrypt
 from datetime import datetime
 import random
+import json
 
 # DB 파일 경로 (프로젝트 루트에 recyclego.db 생성)
 DB_PATH = Path(__file__).parent / "recyclego.db"
@@ -57,6 +58,19 @@ def init_db():
             UNIQUE(user_id, mission_id, date),
             FOREIGN KEY(user_id) REFERENCES users(id),
             FOREIGN KEY(mission_id) REFERENCES missions(id)
+        )
+        """
+    )
+
+     # 🔹 분리수거 퀴즈 테이블
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS quizzes (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_name  TEXT    NOT NULL,   -- 예: '페트병', '종이컵'
+            question   TEXT    NOT NULL,   -- 문제 문장
+            options    TEXT    NOT NULL,   -- 보기: JSON 문자열로 저장
+            answer_idx INTEGER NOT NULL    -- 정답 보기 인덱스(0,1,2,3...)
         )
         """
     )
@@ -329,3 +343,90 @@ def set_premium(user_id: int, value: bool):
     )
     conn.commit()
     conn.close()
+
+def add_quiz(item_name: str, question: str, options_list, answer_idx: int):
+    """
+    분리수거 퀴즈 추가.
+    options_list: ['보기1', '보기2', ...] 형태의 리스트
+    answer_idx: 정답이 되는 보기의 인덱스(0부터 시작)
+    """
+    options_json = json.dumps(options_list, ensure_ascii=False)
+
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        INSERT INTO quizzes (item_name, question, options, answer_idx)
+        VALUES (?, ?, ?, ?)
+        """,
+        (item_name, question, options_json, answer_idx),
+    )
+    conn.commit()
+    conn.close()
+
+def get_quizzes_by_item(item_name: str):
+    """
+    해당 항목 이름과 연결된 모든 퀴즈를 가져온다.
+    return: [{id, item_name, question, options(list), answer_idx}, ...]
+    """
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT id, item_name, question, options, answer_idx
+        FROM quizzes
+        WHERE item_name = ?
+        """,
+        (item_name,),
+    )
+    rows = cur.fetchall()
+    conn.close()
+
+    quizzes = []
+    for qid, item, question, options_json, answer_idx in rows:
+        options_list = json.loads(options_json)
+        quizzes.append(
+            {
+                "id": qid,
+                "item_name": item,
+                "question": question,
+                "options": options_list,
+                "answer_idx": answer_idx,
+            }
+        )
+    return quizzes
+
+def get_quiz_by_id(quiz_id: int):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT id, item_name, question, options, answer_idx
+        FROM quizzes
+        WHERE id = ?
+        """,
+        (quiz_id,),
+    )
+    row = cur.fetchone()
+    conn.close()
+
+    if row is None:
+        return None
+
+    qid, item, question, options_json, answer_idx = row
+    return {
+        "id": qid,
+        "item_name": item,
+        "question": question,
+        "options": json.loads(options_json),
+        "answer_idx": answer_idx,
+    }
+
+def check_quiz_answer(quiz_id: int, selected_idx: int) -> bool:
+    """
+    사용자가 선택한 보기 인덱스가 정답인지 확인.
+    """
+    quiz = get_quiz_by_id(quiz_id)
+    if quiz is None:
+        return False
+    return quiz["answer_idx"] == selected_idx

@@ -3,6 +3,8 @@ import openai
 import base64
 from openai import OpenAI
 import db
+import os  # 파일 존재 여부 체크용
+import random
 
 # 나중에 도메인 좀 직관적이고 예쁜걸로 바꾸기!
 # 웹페이지로(아마)
@@ -87,7 +89,7 @@ def analyze_image(client, image_file):    # 물건 최대 2개정도 제대로 �
                 "content": [
                     {
                         "type": "input_text",
-                        "text": """이 물건이 어떤 물건인지 추리해서, 어떤 물건인지만 알려줘. 예를 들어서, 유리컵으로 보이는 사진을 입력받으면, "유리컵" 이라고만 답해줘."""
+                        "text": """이 물건이 어떤 물건인지 추리해서, 어떤 물건인지만 알려줘. 예를 들어서, 유리컵과 축구공이 보이는 사진을 입력받으면, "유리컵, 축구공" 이라고만 답해줘."""
                     },
                     {
                         "type": "input_image",
@@ -100,7 +102,7 @@ def analyze_image(client, image_file):    # 물건 최대 2개정도 제대로 �
     )
     return response.output_text
 
-def create_vector(client):   #vector 저장여부 확인함수
+def create_vector(client):   # vector 저장여부 확인함수
     TARGET_NAME = "recycle_PDF"
 
     # 1) 내 계정에 이미 같은 이름의 vector store가 있는지 확인
@@ -109,23 +111,43 @@ def create_vector(client):   #vector 저장여부 확인함수
         if vs.name == TARGET_NAME:
             return vs  # 있으면 그거 재사용
 
-    # 2) 없으면 새로 만들고 PDF 업로드
-    with open("data/recycle.pdf", "rb") as f:
+    # 2) 없으면 새로 만들고 PDF 2개 업로드
+    file_paths = [
+        "data/recycle.pdf",
+        "data/foods.pdf",   # 새로 추가한 음식물 쓰레기 PDF
+    ]
+
+    # 실제로 존재하는 파일만 필터링 (혹시 한쪽이 없을 때 대비)
+    existing_paths = [p for p in file_paths if os.path.exists(p)]
+    if not existing_paths:
+        raise FileNotFoundError("업로드할 PDF 파일을 찾을 수 없습니다. data/ 폴더를 확인하세요.")
+
+    file_streams = [open(path, "rb") for path in existing_paths]
+
+    try:
         vs = client.vector_stores.create(name=TARGET_NAME)
         client.vector_stores.file_batches.upload_and_poll(
             vector_store_id=vs.id,
-            files=[f],
+            files=file_streams,
         )
+    finally:
+        # 파일 핸들 닫기
+        for f in file_streams:
+            f.close()
+
     return vs
 
 def show_chat(m):   #chat show 함수, 어떤 인터페이스 쓸지 고민 필요.
     with st.chat_message(m['role']):
         st.markdown(m["content"])
 
-def show_image(m):    # 유저 답변 뜨는거 고쳐야됨.
-    with st.chat_message(m['role']):
-        if m['role']=="assistant":
-            st.markdown(m["content"])
+def show_image(m):
+    if m.get("role") != "assistant":
+        return  # user면 아무것도 표시 안 함
+
+    with st.chat_message("assistant"):
+        st.markdown(m.get("content", ""))
+
 
 
 
