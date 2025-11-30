@@ -430,3 +430,115 @@ def check_quiz_answer(quiz_id: int, selected_idx: int) -> bool:
     if quiz is None:
         return False
     return quiz["answer_idx"] == selected_idx
+
+  # 🔹 유저별 일일 퀴즈 기록 테이블
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS user_daily_quiz (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id   INTEGER NOT NULL,
+            date      TEXT    NOT NULL,   -- YYYY-MM-DD (오늘 기준)
+            solved    INTEGER NOT NULL DEFAULT 0,  -- 오늘 퀴즈 클리어 여부 (0/1)
+            solved_at TEXT,               -- 처음 클리어한 시각
+            UNIQUE(user_id, date),
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        )
+        """
+    )
+
+def has_solved_quiz_today(user_id: int) -> bool:
+    """
+    해당 유저가 '오늘 일일 퀴즈를 이미 클리어했는지' 여부를 반환.
+    (포인트 지급 여부 판단용)
+    """
+    today = datetime.now().date().isoformat()
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT solved
+        FROM user_daily_quiz
+        WHERE user_id = ? AND date = ?
+        """,
+        (user_id, today),
+    )
+    row = cur.fetchone()
+    conn.close()
+
+    if row is None:
+        return False
+    return bool(row[0])
+
+def mark_quiz_solved_today(user_id: int):
+    """
+    오늘 날짜 기준으로 해당 유저의 일일 퀴즈를 '클리어' 상태로 기록.
+    이미 기록이 있으면 solved=1로 업데이트.
+    """
+    today = datetime.now().date().isoformat()
+    now = datetime.now().isoformat(timespec="seconds")
+
+    conn = get_conn()
+    cur = conn.cursor()
+
+    # 이미 기록이 있는지 확인
+    cur.execute(
+        """
+        SELECT id FROM user_daily_quiz
+        WHERE user_id = ? AND date = ?
+        """,
+        (user_id, today),
+    )
+    row = cur.fetchone()
+
+    if row is None:
+        # 오늘 처음 기록
+        cur.execute(
+            """
+            INSERT INTO user_daily_quiz (user_id, date, solved, solved_at)
+            VALUES (?, ?, 1, ?)
+            """,
+            (user_id, today, now),
+        )
+    else:
+        # 기록은 있는데 solved만 1로 갱신
+        record_id = row[0]
+        cur.execute(
+            """
+            UPDATE user_daily_quiz
+            SET solved = 1, solved_at = ?
+            WHERE id = ?
+            """,
+            (now, record_id),
+        )
+
+    conn.commit()
+    conn.close()
+
+def get_today_quiz_status(user_id: int):
+    """
+    오늘 유저의 일일 퀴즈 기록을 딕셔너리 형태로 반환.
+    없으면 None.
+    """
+    today = datetime.now().date().isoformat()
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT id, solved, solved_at
+        FROM user_daily_quiz
+        WHERE user_id = ? AND date = ?
+        """,
+        (user_id, today),
+    )
+    row = cur.fetchone()
+    conn.close()
+
+    if row is None:
+        return None
+
+    record_id, solved, solved_at = row
+    return {
+        "id": record_id,
+        "solved": bool(solved),
+        "solved_at": solved_at,
+    }
