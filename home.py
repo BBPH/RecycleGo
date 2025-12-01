@@ -12,7 +12,7 @@ import random
 # 이것 말고도 정보가 더 있으면 좋겠음. 법령이랑 추가정보랑 해서 pdf 통합해야 될 듯.
 # 아이디 비번 형식이나, api key 필요없는 버전으로 만들고 싶지만, 일단 보류. (방법 필요)
 # github는 streamlit cloud로 웹사이트를 실행하면 서버 복사본으로 실행중이랬나? 그렇게 되니까... 계속 켜두기만 하면 정보손실 없는거 아닌가?
-
+# addquiz.py가 실행 안되는 문제가 있으니, home에 추가하든(아마 문제가 생길거라고 생각함.) addquiz를 실행할 방법을 찾든 해야함.
 
 
 
@@ -204,6 +204,23 @@ def show_image(m):
 
 db.init_db()
 db.seed_missions()
+
+Boot = True
+
+if Boot:
+    # ("", "", ["", "", "", ""], )
+    # item_name: str, question: str, options_list, answer_idx: int
+    quizzes = [
+    ("1", "다음 중 분리수거를 할 수 없는 것은?", ["종이컵", "스티로폼", "뽁뽁이", "테이프"], 3),
+    ("2", "다음 보기 중 음식물 쓰레기는?", ["수박 껍질", "양파 껍질", "생선 가시", "고추장"], 0),
+    ("3", "다음 중 종이로 배출할 수 없는 것은?", ["각종 고지서", "과자박스", "영수증", "포스트잇"], 2),
+    ("4", "다음 보기 중 재활용이 가능한 것은?", ["우산", "커피 캡슐", "치약 튜브", "빨대"], 2)
+    ]
+
+    for quiz in quizzes:
+        db.add_quiz(*quiz)
+    Boot = False
+
 
 st.set_page_config(page_title="분리수Go!", page_icon="♻️")
 
