@@ -109,6 +109,7 @@ def show_quiz(user_id):    # 틀렸을 때 같은 퀴즈 보여줄 수 있으니
                     db.mark_quiz_solved_today(user_id)
                     db.add_points(user_id, QUIZ_REWARD)
                     st.success(f"정답입니다! 🎉 오늘 퀴즈 보상 {QUIZ_REWARD}점을 획득했습니다.")
+                st.session_state["show_quiz"] = False   # 한 번 보여주고 끄기
             else:
                 st.error("오답입니다. 다른 문제로 다시 도전해보세요!")
 
@@ -398,7 +399,7 @@ if st.session_state["user_id"] is not None:
 
     if st.session_state["show_quiz"]:
         show_quiz(user_id)
-        st.session_state["show_quiz"] = False   # 한 번 보여주고 끄기
+
 
     st.divider()
 
