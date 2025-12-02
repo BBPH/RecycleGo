@@ -220,7 +220,7 @@ def show_main():
 db.init_db()
 db.seed_missions()
 
-Boot = False
+Boot = False # streamlit cloud에 연동하기 전에 True로 변경해야함!
 
 if Boot:
     # ("", "", ["", "", "", ""], )
@@ -235,7 +235,6 @@ if Boot:
     for quiz in quizzes:
         db.add_quiz(*quiz)
     Boot = False
-
 
 st.set_page_config(page_title="분리수Go!", page_icon="♻️")
 
