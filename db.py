@@ -75,6 +75,20 @@ def init_db():
         """
     )
 
+    # 🔹 유저별 일일 퀴즈 기록 테이블  ⬅⬅⬅ 여기 추가
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS user_daily_quiz (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id   INTEGER NOT NULL,
+            date      TEXT    NOT NULL,   -- YYYY-MM-DD
+            solved    INTEGER NOT NULL DEFAULT 0,  -- 오늘 퀴즈 클리어 여부 (0/1)
+            solved_at TEXT,               -- 처음 클리어한 시각
+            UNIQUE(user_id, date),
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        )
+        """
+    )
     conn.commit()
     conn.close()
 
@@ -430,21 +444,6 @@ def check_quiz_answer(quiz_id: int, selected_idx: int) -> bool:
     if quiz is None:
         return False
     return quiz["answer_idx"] == selected_idx
-
-  # 🔹 유저별 일일 퀴즈 기록 테이블
-    cur.execute(
-        """
-        CREATE TABLE IF NOT EXISTS user_daily_quiz (
-            id        INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id   INTEGER NOT NULL,
-            date      TEXT    NOT NULL,   -- YYYY-MM-DD (오늘 기준)
-            solved    INTEGER NOT NULL DEFAULT 0,  -- 오늘 퀴즈 클리어 여부 (0/1)
-            solved_at TEXT,               -- 처음 클리어한 시각
-            UNIQUE(user_id, date),
-            FOREIGN KEY(user_id) REFERENCES users(id)
-        )
-        """
-    )
 
 def has_solved_quiz_today(user_id: int) -> bool:
     """
