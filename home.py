@@ -220,7 +220,7 @@ def show_main():
 db.init_db()
 db.seed_missions()
 
-Boot = False # streamlit cloud에 연동하기 전에 True로 변경해야함!
+Boot = True # streamlit cloud에 연동하기 전에 True로 변경해야함!
 
 if Boot:
     # ("", "", ["", "", "", ""], )
