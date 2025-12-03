@@ -11,7 +11,8 @@ import random
 # github는 streamlit cloud로 웹사이트를 실행하면 서버 복사본으로 실행중이랬나? 그렇게 되니까... 계속 켜두기만 하면 정보손실 없는거 아닌가?
 # addquiz.py가 실행 안되는 문제가 있으니, home에 추가하든(아마 문제가 생길거라고 생각함.) addquiz를 실행할 방법을 찾든 해야함.
 # api_key 잘못 입력했을 때 우아하게 예외처리하기(어렵지만, 해내거라!)
-
+# 퀴즈 일정 갯수 이상, 질의응답 횟수, 일일미션 전부 완수하기 --> 미션 갯수 적으면할만할수도...?????
+# 랭킹   흠...  고민해봐야함. 일단 남는시간동안 만들어보긴 해야지---
 
 
 
@@ -63,7 +64,7 @@ def show_INFO():
     st.write("개발 언어 : Python")
 
 def show_quiz(user_id):    # 틀렸을 때 같은 퀴즈 보여줄 수 있으니 수정
-    QUIZ_REWARD = 10  # 예: 일일 퀴즈 포인트
+    QUIZ_REWARD = 50  # 예: 일일 퀴즈 포인트
 
     # 퀴즈 목록 로딩 (한 번만)
     if "quizzes" not in st.session_state:
@@ -396,32 +397,32 @@ if st.session_state["user_id"] is not None:
         show_main()
 
     
+# 미션을 항상 같은 종류로 처리하면 엄청 편해지긴 함 --> ㅇㅋㅇㅋㅇㅋ
 
 
+        st.divider()
 
-#        st.divider()
+        st.subheader("오늘의 미션")
 
-#        st.subheader("오늘의 미션")
-
-#    missions = db.get_or_create_today_missions(user_id)
-#    if not missions:
-#        st.info("오늘은 미션이 없습니다.")
-#    else:
-#        done = sum(1 for m in missions if m["completed"])
-#        total = len(missions)
-#        st.write(f"오늘 미션 진행도: **{done} / {total}**")
-#        cols = st.columns(total)
-#        for col, m in zip(cols, missions):
-#            with col:
-#                st.write(f"✅ {m['description']}")
-#                st.write(f"보상: **+{m['reward']}점**")
-#                if m["completed"]:
-#                    st.success("완료됨")
-#                else:
-#                    if st.button("완료하기", key=f"mission_{m['user_mission_id']}"):
-#                        db.complete_mission(m["user_mission_id"])
-#                        st.success("미션 완료!")
-#                        st.rerun()
+    missions = db.get_or_create_today_missions(user_id)
+    if not missions:
+        st.info("오늘은 미션이 없습니다.")
+    else:
+        done = sum(1 for m in missions if m["completed"])
+        total = len(missions)
+        st.write(f"오늘 미션 진행도: **{done} / {total}**")
+        cols = st.columns(total)
+        for col, m in zip(cols, missions):
+            with col:
+                st.write(f"✅ {m['description']}")
+                st.write(f"보상: **+{m['reward']}점**")
+                if m["completed"]:
+                    st.success("완료됨")
+                else:
+                    if st.button("완료하기", key=f"mission_{m['user_mission_id']}"):
+                        db.complete_mission(m["user_mission_id"])
+                        st.success("미션 완료!")
+                        st.rerun()
 
     if st.session_state["show_quiz"]:
         show_quiz(user_id)

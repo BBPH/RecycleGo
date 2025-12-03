@@ -172,12 +172,9 @@ def seed_missions():
     (count,) = cur.fetchone()
     if count == 0:
         data = [
-            ("separate_plastic", "플라스틱 3개 이상 라벨 떼고 분리배출하기", 10),
-            ("check_label", "분리배출 표시 라벨 5개 이상 읽어보기", 8),
-            ("reusable_bag", "오늘 장볼 때 장바구니 사용하기", 5),
-            ("paper_clean", "종이류에서 스티커/테이프 제거하고 버리기", 7),
-            ("can_rinse", "캔/병을 헹군 뒤 배출하기", 6),
-            ("food_reduce", "오늘 음식물 쓰레기 줄이기 실천해보기", 9),
+            ("name", "퀴즈 3개 이상 풀기", 100),
+            ("name", "질의응답 2개 이상 하기", 100),
+            ("name", "일일 미션 전부 완수하기", 150)    # example
         ]
         cur.executemany(
             "INSERT INTO missions (code, description, reward) VALUES (?, ?, ?)",
@@ -218,16 +215,15 @@ def get_or_create_today_missions(user_id: int):
             for r in rows
         ]
 
-    # 없으면 새로 3개 뽑아서 user_missions에 넣기
-    cur.execute("SELECT id, description, reward FROM missions")
-    all_missions = cur.fetchall()
-    if len(all_missions) == 0:
+    # 🔹 랜덤 대신 — missions 테이블에서 id 순서로 3개 선택
+    cur.execute("SELECT id, description, reward FROM missions ORDER BY id ASC LIMIT 3")
+    selected = cur.fetchall()
+
+    if len(selected) == 0:
         conn.close()
         return []
 
-    # 3개 랜덤 선택 (개수가 3개 미만이면 가능한 만큼)
-    selected = random.sample(all_missions, k=min(3, len(all_missions)))
-
+    # user_missions에 삽입
     for mid, desc, reward in selected:
         cur.execute(
             """
