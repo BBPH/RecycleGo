@@ -2,10 +2,15 @@ import sqlite3
 from pathlib import Path
 from datetime import datetime
 import bcrypt
+from datetime import datetime
 import json
+
+# 이거 그냥 리팩토링 해버리는게 더 나을 것 같기도 하고... 괜히 gpt한테 일임한 것 같다는 생각이 드는데.
+# 근데 리팩토링 하면 home.py에서 고쳐야할게 늘어서... 가능성 체크해보고 해야할 듯.
 
 # DB 파일 경로 (프로젝트 루트에 recyclego.db 생성)
 DB_PATH = Path(__file__).parent / "recyclego.db"
+
 
 def get_conn():
     """DB 연결 반환 (사용 후 꼭 conn.close())"""
@@ -46,11 +51,11 @@ def init_db():
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS user_missions (
-            id           INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id      INTEGER NOT NULL,
-            mission_id   INTEGER NOT NULL,
-            date         TEXT NOT NULL,
-            completed    INTEGER NOT NULL DEFAULT 0,
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     INTEGER NOT NULL,
+            mission_id  INTEGER NOT NULL,
+            date        TEXT NOT NULL,
+            completed   INTEGER NOT NULL DEFAULT 0,
             completed_at TEXT,
             UNIQUE(user_id, mission_id, date),
             FOREIGN KEY(user_id) REFERENCES users(id),
@@ -59,7 +64,7 @@ def init_db():
         """
     )
 
-    # 🔹 분리수거 퀴즈 테이블
+     # 🔹 분리수거 퀴즈 테이블
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS quizzes (
@@ -72,7 +77,7 @@ def init_db():
         """
     )
 
-    # 🔹 유저별 일일 퀴즈 기록 테이블
+    # 🔹 유저별 일일 퀴즈 기록 테이블  ⬅⬅⬅ 여기 추가
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS user_daily_quiz (
@@ -87,35 +92,35 @@ def init_db():
         """
     )
 
-    # 🔹 미션 수행 카운트 & 로그 테이블 (오늘 날짜 기준으로 count 누적)
+    # 🔹 미션 수행 로그 테이블 (어떤 행동으로 미션을 했는지 기록)   이거때문이구나 찾았다 범인!!! date와 date_json사이
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS mission_action (
-            id         INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id    INTEGER NOT NULL,
-            mission_id INTEGER NOT NULL,
-            date       TEXT NOT NULL,        -- YYYY-MM-DD 기준
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     INTEGER NOT NULL,
+            mission_id  INTEGER NOT NULL,
+            date        TEXT NOT NULL,        -- YYYY-MM-DD 기준
+            data_json   TEXT,                 -- JSON 문자열(추가 정보: 퀴즈 id, 정답 여부 등)
             count      INTEGER NOT NULL DEFAULT 0,
-            data_json  TEXT,                 -- JSON 문자열(추가 정보: 퀴즈 id, 정답 여부 등)
-            created_at TEXT NOT NULL,
             UNIQUE(user_id, mission_id, date),
+            created_at  TEXT NOT NULL,
             FOREIGN KEY(user_id) REFERENCES users(id),
             FOREIGN KEY(mission_id) REFERENCES missions(id)
         )
         """
     )
 
+#            action_type TEXT NOT NULL,        -- 예: 'quiz_solved', 'qa_asked'
+
     conn.commit()
     conn.close()
-
-
-# ---------------- 기본 유저/포인트 ----------------
 
 def create_user(username: str, password: str, region: str | None = None):
     """회원가입: username, password, region 저장"""
     conn = get_conn()
     cur = conn.cursor()
 
+    # 비밀번호 해시
     pw_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt())
     pw_hash_str = pw_hash.decode("utf-8")
 
@@ -133,7 +138,10 @@ def create_user(username: str, password: str, region: str | None = None):
     conn.close()
 
 def authenticate(username: str, password: str):
-    """로그인 시도. 성공하면 user_id(int) 반환, 실패하면 None."""
+    """
+    로그인 시도.
+    성공하면 user_id(int) 반환, 실패하면 None 반환.
+    """
     conn = get_conn()
     cur = conn.cursor()
 
@@ -178,8 +186,6 @@ def add_points(user_id: int, delta: int):
     conn.commit()
     conn.close()
 
-# ---------------- 미션 정의 & 오늘 미션 ----------------
-
 def seed_missions():
     """미션 테이블이 비어 있으면 기본 미션 몇 개 넣기."""
     conn = get_conn()
@@ -191,7 +197,7 @@ def seed_missions():
         data = [
             ("1", "퀴즈 3개 이상 풀기", 100),
             ("2", "질의응답 2개 이상 하기", 100),
-            ("3", "일일 미션 전부 완수하기", 150),
+            ("3", "일일 미션 전부 완수하기", 150)
         ]
         cur.executemany(
             "INSERT INTO missions (code, description, reward) VALUES (?, ?, ?)",
@@ -226,7 +232,7 @@ def get_or_create_today_missions(user_id: int):
             {
                 "user_mission_id": r[0],
                 "mission_id": r[1],
-                "code": r[2],
+                "code": r[2],           # ← 미션 코드 추가됨
                 "description": r[3],
                 "reward": r[4],
                 "completed": bool(r[5]),
@@ -272,7 +278,7 @@ def get_or_create_today_missions(user_id: int):
         {
             "user_mission_id": r[0],
             "mission_id": r[1],
-            "code": r[2],
+            "code": r[2],           # ← 코드 명확하게 포함
             "description": r[3],
             "reward": r[4],
             "completed": bool(r[5]),
@@ -355,9 +361,7 @@ def get_title(points: int) -> str:
         return "분리수거 초보 탈출 👣"
     else:
         return "새싹 분리수거러 🌱(입문)"
-
-# ---------------- 프리미엄 ----------------
-
+    
 def is_premium(user_id: int) -> bool:
     conn = get_conn()
     cur = conn.cursor()
@@ -376,8 +380,6 @@ def set_premium(user_id: int, value: bool):
     )
     conn.commit()
     conn.close()
-
-# ---------------- 퀴즈 ----------------
 
 def add_quiz(item_name: str, question: str, options_list, answer_idx: int):
     """
@@ -458,14 +460,19 @@ def get_quiz_by_id(quiz_id: int):
     }
 
 def check_quiz_answer(quiz_id: int, selected_idx: int) -> bool:
-    """사용자가 선택한 보기 인덱스가 정답인지 확인."""
+    """
+    사용자가 선택한 보기 인덱스가 정답인지 확인.
+    """
     quiz = get_quiz_by_id(quiz_id)
     if quiz is None:
         return False
     return quiz["answer_idx"] == selected_idx
 
 def has_solved_quiz_today(user_id: int) -> bool:
-    """해당 유저가 '오늘 일일 퀴즈를 이미 클리어했는지' 여부."""
+    """
+    해당 유저가 '오늘 일일 퀴즈를 이미 클리어했는지' 여부를 반환.
+    (포인트 지급 여부 판단용)
+    """
     today = datetime.now().date().isoformat()
     conn = get_conn()
     cur = conn.cursor()
@@ -495,6 +502,7 @@ def mark_quiz_solved_today(user_id: int):
     conn = get_conn()
     cur = conn.cursor()
 
+    # 이미 기록이 있는지 확인
     cur.execute(
         """
         SELECT id FROM user_daily_quiz
@@ -505,6 +513,7 @@ def mark_quiz_solved_today(user_id: int):
     row = cur.fetchone()
 
     if row is None:
+        # 오늘 처음 기록
         cur.execute(
             """
             INSERT INTO user_daily_quiz (user_id, date, solved, solved_at)
@@ -513,6 +522,7 @@ def mark_quiz_solved_today(user_id: int):
             (user_id, today, now),
         )
     else:
+        # 기록은 있는데 solved만 1로 갱신
         record_id = row[0]
         cur.execute(
             """
@@ -527,7 +537,10 @@ def mark_quiz_solved_today(user_id: int):
     conn.close()
 
 def get_today_quiz_status(user_id: int):
-    """오늘 유저의 일일 퀴즈 기록을 딕셔너리 형태로 반환. 없으면 None."""
+    """
+    오늘 유저의 일일 퀴즈 기록을 딕셔너리 형태로 반환.
+    없으면 None.
+    """
     today = datetime.now().date().isoformat()
     conn = get_conn()
     cur = conn.cursor()
@@ -552,39 +565,11 @@ def get_today_quiz_status(user_id: int):
         "solved_at": solved_at,
     }
 
-def seed_quizzes():
-    """quizzes 테이블이 비어 있으면 기본 퀴즈 몇 개 넣기."""
-    conn = get_conn()
-    cur = conn.cursor()
-
-    cur.execute("SELECT COUNT(*) FROM quizzes")
-    (count,) = cur.fetchone()
-
-    if count == 0:
-        data = [
-            ("1", "다음 중 분리수거를 할 수 없는 것은?", ["종이컵", "스티로폼", "뽁뽁이", "테이프"], 3),
-            ("2", "다음 보기 중 음식물 쓰레기는?", ["수박 껍질", "양파 껍질", "생선 가시", "고추장"], 0),
-            ("3", "다음 중 종이로 배출할 수 없는 것은?", ["각종 고지서", "과자박스", "영수증", "포스트잇"], 2),
-            ("4", "다음 보기 중 재활용이 가능한 것은?", ["우산", "커피 캡슐", "치약 튜브", "빨대"], 2),
-        ]
-
-        for item_name, question, options, answer_idx in data:
-            options_json = json.dumps(options, ensure_ascii=False)
-            cur.execute(
-                """
-                INSERT INTO quizzes (item_name, question, options, answer_idx)
-                VALUES (?, ?, ?, ?)
-                """,
-                (item_name, question, options_json, answer_idx),
-            )
-        conn.commit()
-
-    conn.close()
-
-# ---------------- 미션 progress/조건 체크 ----------------
-
 def get_mission_id_by_code(code: str) -> int | None:
-    """missions.code 로 missions.id 조회. 없으면 None."""
+    """
+    missions.code 로 missions.id 조회.
+    없으면 None.
+    """
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(
@@ -605,15 +590,14 @@ def add_mission_progress(user_id: int, mission_code: str, delta: int = 1):
     """
     mission_id = get_mission_id_by_code(mission_code)
     if mission_id is None:
-        return
+        return  # 미션 코드가 없는 경우는 그냥 무시
 
     today = datetime.now().date().isoformat()
-    now = datetime.now().isoformat(timespec="seconds")
 
     conn = get_conn()
     cur = conn.cursor()
 
-    # 오늘 row 있는지 확인
+    # 먼저 오늘 row가 있는지 확인
     cur.execute(
         """
         SELECT count
@@ -625,16 +609,16 @@ def add_mission_progress(user_id: int, mission_code: str, delta: int = 1):
     row = cur.fetchone()
 
     if row is None:
-        # 새 row
+        # 오늘 처음 기록하는 경우 → 새 row 삽입
         cur.execute(
             """
-            INSERT INTO mission_action (user_id, mission_id, date, count, data_json, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO mission_action (user_id, mission_id, date, count)
+            VALUES (?, ?, ?, ?)
             """,
-            (user_id, mission_id, today, delta, None, now),
+            (user_id, mission_id, today, delta),
         )
     else:
-        # count 증가
+        # 이미 있으면 count 증가
         cur.execute(
             """
             UPDATE mission_action
@@ -647,57 +631,47 @@ def add_mission_progress(user_id: int, mission_code: str, delta: int = 1):
     conn.commit()
     conn.close()
 
-def log_mission_action(user_id: int, mission_code: str, data: dict | None = None):
+def log_mission_action(
+    user_id: int,
+    mission_code: str,
+    data: dict | None = None,
+):
     """
-    행동 1회 기록 + 추가 정보 JSON 저장.
-    (내부적으로 count 1 증가하는 효과)
+    특정 미션과 관련된 '행동'을 기록.
+    예)
+      - mission_code='1', data={'quiz_id': 3, 'correct': True}
+      - mission_code='2', data={'query': '종이컵 버리는 법'}
     """
     mission_id = get_mission_id_by_code(mission_code)
     if mission_id is None:
+        # 정의되지 않은 미션 코드면 그냥 무시하거나 에러를 던져도 됨
         return
 
     today = datetime.now().date().isoformat()
     now = datetime.now().isoformat(timespec="seconds")
+
     data_json = json.dumps(data, ensure_ascii=False) if data is not None else None
 
     conn = get_conn()
     cur = conn.cursor()
-
     cur.execute(
         """
-        SELECT count
-        FROM mission_action
-        WHERE user_id = ? AND mission_id = ? AND date = ?
+        INSERT INTO mission_actions (user_id, mission_id, date, data_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
         """,
-        (user_id, mission_id, today),
+        (user_id, mission_id, today, data_json, now),
     )
-    row = cur.fetchone()
-
-    if row is None:
-        cur.execute(
-            """
-            INSERT INTO mission_action (user_id, mission_id, date, count, data_json, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (user_id, mission_id, today, 1, data_json, now),
-        )
-    else:
-        cur.execute(
-            """
-            UPDATE mission_action
-            SET count = count + 1, data_json = ?
-            WHERE user_id = ? AND mission_id = ? AND date = ?
-            """,
-            (data_json, user_id, mission_id, today),
-        )
-
     conn.commit()
     conn.close()
 
-def get_mission_progress_today(user_id: int, mission_code: str) -> int:
+def count_mission_actions_today(
+    user_id: int,
+    mission_code: str
+) -> int:
     """
-    오늘 해당 미션에 대해 누적된 count를 반환.
-    (없으면 0)
+    오늘 날짜 기준으로 특정 미션에 대해 기록된 행동 수를 반환.
+    action_type 을 지정하면 그 종류만 세고,
+    None 이면 해당 미션에 대한 모든 행동을 센다.
     """
     mission_id = get_mission_id_by_code(mission_code)
     if mission_id is None:
@@ -706,25 +680,38 @@ def get_mission_progress_today(user_id: int, mission_code: str) -> int:
     today = datetime.now().date().isoformat()
     conn = get_conn()
     cur = conn.cursor()
+
+#    if action_type is None:
+#        cur.execute(
+#            """
+#            SELECT COUNT(*)
+#            FROM mission_actions
+#            WHERE user_id = ? AND mission_id = ? AND date = ?
+#            """,
+#            (user_id, mission_id, today),
+#        )
+#    else:
     cur.execute(
         """
-        SELECT count
-        FROM mission_action
+        SELECT COUNT(*)
+        FROM mission_actions
         WHERE user_id = ? AND mission_id = ? AND date = ?
         """,
         (user_id, mission_id, today),
     )
-    row = cur.fetchone()
+
+    (cnt,) = cur.fetchone()
     conn.close()
+    return cnt or 0
 
-    if row is None:
-        return 0
-    return row[0] or 0
-
-def has_enough_actions_today(user_id: int, mission_code: str, required_count: int) -> bool:
+def has_enough_actions_today(
+    user_id: int,
+    mission_code: str,
+    required_count: int,
+) -> bool:
     """
-    오늘 특정 미션에 대해 count가 required_count 이상인지 확인.
-    예) '퀴즈 3개 이상 풀기' → has_enough_actions_today(user_id, "1", 3)
+    오늘 특정 미션에 대해 일정 횟수 이상 행동이 있었는지 여부 반환.
+    예) 미션 '1'에 대해 quiz_solved 3번 이상 -> True
     """
-    cnt = get_mission_progress_today(user_id, mission_code)
+    cnt = count_mission_actions_today(user_id, mission_code)
     return cnt >= required_count

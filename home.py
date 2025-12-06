@@ -13,7 +13,7 @@ import random
 # api_key 잘못 입력했을 때 우아하게 예외처리하기(어렵지만, 해내거라!)
 # 퀴즈 일정 갯수 이상, 질의응답 횟수, 일일미션 전부 완수하기 --> 미션 갯수 적으면할만할수도...?????
 # 랭킹   흠...  고민해봐야함. 일단 남는시간동안 만들어보긴 해야지---
-
+# 퀴즈 연달아서 뜨게 만들기(3개)
 
 
 
@@ -63,53 +63,94 @@ def show_INFO():
     st.write("정보 출처 : 생활법령정보, 제품·포장재 분리배출요령")
     st.write("개발 언어 : Python")
 
-def show_quiz(user_id):    # 틀렸을 때 같은 퀴즈 보여줄 수 있으니 수정
-    QUIZ_REWARD = 50  # 예: 일일 퀴즈 포인트
+def show_quiz(user_id):
+    QUIZ_REWARD = 50
 
-    # 퀴즈 목록 로딩 (한 번만)
+    if "quiz_feedback" not in st.session_state:
+        st.session_state["quiz_feedback"] = None
+
+    # 🔹 모든 퀴즈를 한 번에 풀로 가져오기
     if "quizzes" not in st.session_state:
-        st.session_state["quizzes"] = db.get_quizzes_by_item(str(random.randint(1, 4)))
+        all_quizzes = []
+        for item_name in ["1", "2", "3", "4"]:
+            all_quizzes.extend(db.get_quizzes_by_item(item_name))
+        st.session_state["quizzes"] = all_quizzes
 
-    if not st.session_state["quizzes"]:  # [], None 둘 다 대비
+    quizzes = st.session_state["quizzes"]
+
+    if not quizzes:
         st.info("퀴즈가 아직 없습니다.")
+        return
+
+    # 🔹 직전 피드백 표시
+    if st.session_state["quiz_feedback"]:
+        msg_type, msg_text = st.session_state["quiz_feedback"]
+        if msg_type == "success":
+            st.success(msg_text)
+        elif msg_type == "error":
+            st.error(msg_text)
+        elif msg_type == "info":
+            st.info(msg_text)
+
+    # 🔹 현재 퀴즈 선택
+    if "current_quiz_id" not in st.session_state:
+        quiz = random.choice(quizzes)
+        st.session_state["current_quiz_id"] = quiz["id"]
     else:
-        # 한 번 선택한 퀴즈는 유지하고 싶으면 index를 state로
-        if "current_quiz_id" not in st.session_state:
-            quiz = random.choice(st.session_state["quizzes"])
-            st.session_state["current_quiz_id"] = quiz["id"]
-        else:
-            # 같은 id의 퀴즈 다시 찾기
-            qid = st.session_state["current_quiz_id"]
-            quiz = next((q for q in st.session_state["quizzes"] if q["id"] == qid), st.session_state["quizzes"][0])
+        qid = st.session_state["current_quiz_id"]
+        quiz = next((q for q in quizzes if q["id"] == qid), quizzes[0])
 
-        st.subheader(f"퀴즈 - {quiz['item_name']}")
-        st.write(quiz["question"])
+    st.subheader(f"퀴즈 - {quiz['item_name']}")
+    st.write(quiz["question"])
 
-        # 🔹 이제 options를 그냥 문자열 리스트로 사용
-        options = quiz["options"]  # 예: ["O", "X"]
+    options = quiz["options"]
 
-        selected = st.radio(
-            "정답을 선택하세요.",
-            options=options,  # ← ["O", "X"]
-            key=f"quiz_{quiz['id']}",
-            index=None,          # 처음엔 아무 것도 선택 안 하도록 (선택 안 한 상태 허용)
-        )
+    selected = st.radio(
+        "정답을 선택하세요.",
+        options=options,
+        key=f"quiz_{quiz['id']}",
+        index=None,
+    )
 
-        if st.button("정답 확인", key=f"quiz_check_{quiz['id']}"):
-            is_correct = (selected == quiz["options"][quiz["answer_idx"]])
+    if st.button("정답 확인", key=f"quiz_check_{quiz['id']}"):
+        if selected is None:
+            st.session_state["quiz_feedback"] = ("info", "먼저 보기를 하나 선택해 주세요!")
+            st.rerun()
 
-            if is_correct:
-                # 🔹 이미 오늘 퀴즈 포인트를 받은 적 있는지 확인
-                if db.has_solved_quiz_today(user_id):
-                    st.success("정답입니다! (오늘은 이미 퀴즈 포인트를 받았습니다. 연습용으로 계속 풀 수 있어요.)")
-                else:
-                    # 처음으로 오늘 퀴즈를 맞춘 순간
-                    db.mark_quiz_solved_today(user_id)
-                    db.add_points(user_id, QUIZ_REWARD)
-                    st.success(f"정답입니다! 🎉 오늘 퀴즈 보상 {QUIZ_REWARD}점을 획득했습니다.")
-                    st.rerun()
+        is_correct = (selected == quiz["options"][quiz["answer_idx"]])
+
+        if is_correct:
+            # 🔹 미션용 카운트
+            db.add_mission_progress(user_id, "1", 1)
+
+            if db.has_solved_quiz_today(user_id):
+                st.session_state["quiz_feedback"] = (
+                    "success",
+                    "정답입니다! (오늘은 이미 퀴즈 포인트를 받았습니다. 연습용으로 계속 풀 수 있어요.)"
+                )
             else:
-                st.error("오답입니다. 다른 문제로 다시 도전해보세요!")
+                db.mark_quiz_solved_today(user_id)
+                db.add_points(user_id, QUIZ_REWARD)
+                st.session_state["quiz_feedback"] = (
+                    "success",
+                    f"정답입니다! 🎉 오늘 퀴즈 보상 {QUIZ_REWARD}점을 획득했습니다."
+                )
+
+            # 🔹 다음 퀴즈로 변경
+            remaining = [q for q in quizzes if q["id"] != quiz["id"]]
+            if remaining:
+                next_quiz = random.choice(remaining)
+                st.session_state["current_quiz_id"] = next_quiz["id"]
+            else:
+                st.session_state["current_quiz_id"] = quiz["id"]
+
+            st.session_state.pop(f"quiz_{quiz['id']}", None)
+            st.rerun()
+
+        else:
+            st.session_state["quiz_feedback"] = ("error", "오답입니다. 다른 문제로 다시 도전해보세요!")
+            st.rerun()
+
 
 def gpt(prompt):    #response 생성 함수, 파일명에 대한 정보 안 나오게 수정해야함.
     response = client.responses.create(
@@ -121,6 +162,7 @@ def gpt(prompt):    #response 생성 함수, 파일명에 대한 정보 안 나�
         }],
         include=["file_search_call.results"]
     )
+    db.add_mission_progress(user_id, "2", 1)
     return response.output_text
 
 def analyze_image(client, image_file):    # 물건 최대 2개정도 제대로 인식함.
@@ -205,6 +247,7 @@ def show_main():
         show_chat(m)
 
     if prompt := st.chat_input("분리수거 하고싶은 품목을 입력하세요."):   # 실제 prompt 입력, sidebar에 기능 분리. (또는 pages 활용)
+        db.add_mission_progress(user_id, "2", 1)
         p1 = {"role":"user", "content": prompt}
         st.session_state["record"].append(p1)
         show_chat(p1)
@@ -220,22 +263,7 @@ def show_main():
 
 db.init_db()
 db.seed_missions()
-
-Boot = True # streamlit cloud에 연동하기 전에 True로 변경해야함!
-
-if Boot:
-    # ("", "", ["", "", "", ""], )
-    # item_name: str, question: str, options_list, answer_idx: int
-    quizzes = [
-    ("1", "다음 중 분리수거를 할 수 없는 것은?", ["종이컵", "스티로폼", "뽁뽁이", "테이프"], 3),
-    ("2", "다음 보기 중 음식물 쓰레기는?", ["수박 껍질", "양파 껍질", "생선 가시", "고추장"], 0),
-    ("3", "다음 중 종이로 배출할 수 없는 것은?", ["각종 고지서", "과자박스", "영수증", "포스트잇"], 2),
-    ("4", "다음 보기 중 재활용이 가능한 것은?", ["우산", "커피 캡슐", "치약 튜브", "빨대"], 2)
-    ]
-
-    for quiz in quizzes:
-        db.add_quiz(*quiz)
-    Boot = False
+db.seed_quizzes()
 
 st.set_page_config(page_title="분리수Go!", page_icon="♻️")
 
@@ -412,17 +440,19 @@ if st.session_state["user_id"] is not None:
         total = len(missions)
         st.write(f"오늘 미션 진행도: **{done} / {total}**")
         cols = st.columns(total)
-        for col, m in zip(cols, missions):
+        for col, m, count in zip(cols, missions, [3, 4, 2]):
             with col:
                 st.write(f"✅ {m['description']}")
                 st.write(f"보상: **+{m['reward']}점**")
                 if m["completed"]:
                     st.success("완료됨")
                 else:
-                    if st.button("완료하기", key=f"mission_{m['user_mission_id']}"):
-                        db.complete_mission(m["user_mission_id"])
-                        st.success("미션 완료!")
-                        st.rerun()
+                    if db.has_enough_actions_today(user_id, m['code'], count):
+                        if st.button("완료하기", key=f"mission_{m['user_mission_id']}"):
+                            db.complete_mission(m["user_mission_id"])
+                            st.success("미션 완료!")
+                            db.add_mission_progress(user_id, "3", 1)
+                            st.rerun()
 
     if st.session_state["show_quiz"]:
         show_quiz(user_id)
