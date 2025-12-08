@@ -7,11 +7,9 @@ import json
 # DB 파일 경로 (프로젝트 루트에 recyclego.db 생성)
 DB_PATH = Path(__file__).parent / "recyclego.db"
 
-
 def get_conn():
     """DB 연결 반환 (사용 후 꼭 conn.close())"""
     return sqlite3.connect(DB_PATH)
-
 
 def init_db():
     conn = get_conn()
@@ -112,7 +110,6 @@ def init_db():
     conn.commit()
     conn.close()
 
-
 # ---------------- 기본 유저/포인트 ----------------
 
 def create_user(username: str, password: str, region: str | None = None):
@@ -135,7 +132,6 @@ def create_user(username: str, password: str, region: str | None = None):
 
     conn.commit()
     conn.close()
-
 
 def authenticate(username: str, password: str):
     """로그인 시도. 성공하면 user_id(int) 반환, 실패하면 None."""
@@ -160,7 +156,6 @@ def authenticate(username: str, password: str):
 
     return None
 
-
 def get_points(user_id: int) -> int:
     """해당 유저의 현재 포인트 조회"""
     conn = get_conn()
@@ -173,7 +168,6 @@ def get_points(user_id: int) -> int:
         return 0
     return row[0]
 
-
 def add_points(user_id: int, delta: int):
     """마일리지 증감 (delta만큼 더하기)"""
     conn = get_conn()
@@ -184,7 +178,6 @@ def add_points(user_id: int, delta: int):
     )
     conn.commit()
     conn.close()
-
 
 # ---------------- 미션 정의 & 오늘 미션 ----------------
 
@@ -208,7 +201,6 @@ def seed_missions():
         conn.commit()
 
     conn.close()
-
 
 def get_or_create_today_missions(user_id: int):
     """해당 유저의 '오늘 미션 3개'를 가져오고, 없으면 생성."""
@@ -289,7 +281,6 @@ def get_or_create_today_missions(user_id: int):
         for r in rows
     ]
 
-
 def complete_mission(user_mission_id: int):
     """미션 완료 처리 + 해당 유저에게 마일리지 지급."""
     now = datetime.now().isoformat(timespec="seconds")
@@ -335,7 +326,6 @@ def complete_mission(user_mission_id: int):
     conn.commit()
     conn.close()
 
-
 def get_today_points(user_id: int) -> int:
     """오늘 완료한 미션들의 reward 합."""
     today = datetime.now().date().isoformat()
@@ -357,7 +347,6 @@ def get_today_points(user_id: int) -> int:
     total = row[0]
     return total if total is not None else 0
 
-
 def get_title(points: int) -> str:
     if points >= 300:
         return "분리수거 달인 🌟"
@@ -368,7 +357,6 @@ def get_title(points: int) -> str:
     else:
         return "새싹 분리수거러 🌱(입문)"
 
-
 # ---------------- 프리미엄 ----------------
 
 def is_premium(user_id: int) -> bool:
@@ -378,7 +366,6 @@ def is_premium(user_id: int) -> bool:
     row = cur.fetchone()
     conn.close()
     return bool(row[0]) if row else False
-
 
 def set_premium(user_id: int, value: bool):
     """현재 계정의 프리미엄 여부를 설정한다."""
@@ -391,6 +378,24 @@ def set_premium(user_id: int, value: bool):
     conn.commit()
     conn.close()
 
+def get_region(user_id: int) -> str | None:
+    """
+    해당 유저의 지역(region) 정보를 반환.
+    저장된 지역이 없으면 None 반환.
+    """
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT region FROM users WHERE id = ?",
+        (user_id,),
+    )
+    row = cur.fetchone()
+    conn.close()
+
+    if row is None:
+        return None
+
+    return row[0]
 
 # ---------------- 퀴즈 ----------------
 
@@ -413,7 +418,6 @@ def add_quiz(item_name: str, question: str, options_list, answer_idx: int):
     )
     conn.commit()
     conn.close()
-
 
 def get_quizzes_by_item(item_name: str):
     """
@@ -447,7 +451,6 @@ def get_quizzes_by_item(item_name: str):
         )
     return quizzes
 
-
 def get_quiz_by_id(quiz_id: int):
     conn = get_conn()
     cur = conn.cursor()
@@ -474,14 +477,12 @@ def get_quiz_by_id(quiz_id: int):
         "answer_idx": answer_idx,
     }
 
-
 def check_quiz_answer(quiz_id: int, selected_idx: int) -> bool:
     """사용자가 선택한 보기 인덱스가 정답인지 확인."""
     quiz = get_quiz_by_id(quiz_id)
     if quiz is None:
         return False
     return quiz["answer_idx"] == selected_idx
-
 
 def has_solved_quiz_today(user_id: int) -> bool:
     """해당 유저가 '오늘 일일 퀴즈를 이미 클리어했는지' 여부."""
@@ -502,7 +503,6 @@ def has_solved_quiz_today(user_id: int) -> bool:
     if row is None:
         return False
     return bool(row[0])
-
 
 def mark_quiz_solved_today(user_id: int):
     """
@@ -546,7 +546,6 @@ def mark_quiz_solved_today(user_id: int):
     conn.commit()
     conn.close()
 
-
 def get_today_quiz_status(user_id: int):
     """오늘 유저의 일일 퀴즈 기록을 딕셔너리 형태로 반환. 없으면 None."""
     today = datetime.now().date().isoformat()
@@ -573,7 +572,6 @@ def get_today_quiz_status(user_id: int):
         "solved_at": solved_at,
     }
 
-
 def get_today_used_quiz_ids(user_id: int) -> list[int]:
     """
     오늘 user가 한 번이라도 시도한 퀴즈 id 목록.
@@ -599,7 +597,6 @@ def get_today_used_quiz_ids(user_id: int) -> list[int]:
         return json.loads(row[0])
     except Exception:
         return []
-
 
 def add_today_used_quiz(user_id: int, quiz_id: int):
     """
@@ -652,7 +649,6 @@ def add_today_used_quiz(user_id: int, quiz_id: int):
 
     conn.commit()
     conn.close()
-
 
 def seed_quizzes():
     """quizzes 테이블이 비어 있으면 기본 퀴즈 몇 개 넣기."""
@@ -734,8 +730,6 @@ def seed_quizzes():
 
     conn.close()
 
-
-
 # ---------------- 미션 progress/조건 체크 ----------------
 
 def get_mission_id_by_code(code: str) -> int | None:
@@ -752,7 +746,6 @@ def get_mission_id_by_code(code: str) -> int | None:
     if row is None:
         return None
     return row[0]
-
 
 def add_mission_progress(user_id: int, mission_code: str, delta: int = 1):
     """
@@ -803,7 +796,6 @@ def add_mission_progress(user_id: int, mission_code: str, delta: int = 1):
     conn.commit()
     conn.close()
 
-
 def log_mission_action(user_id: int, mission_code: str, data: dict | None = None):
     """
     행동 1회 기록 + 추가 정보 JSON 저장.
@@ -851,7 +843,6 @@ def log_mission_action(user_id: int, mission_code: str, data: dict | None = None
     conn.commit()
     conn.close()
 
-
 def get_mission_progress_today(user_id: int, mission_code: str) -> int:
     """
     오늘 해당 미션에 대해 누적된 count를 반환.
@@ -878,7 +869,6 @@ def get_mission_progress_today(user_id: int, mission_code: str) -> int:
     if row is None:
         return 0
     return row[0] or 0
-
 
 def has_enough_actions_today(user_id: int, mission_code: str, required_count: int) -> bool:
     """

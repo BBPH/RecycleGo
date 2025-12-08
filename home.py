@@ -152,7 +152,6 @@ def show_quiz(user_id):
             st.session_state["quiz_feedback"] = ("error", "오답입니다. 다른 문제로 다시 도전해보세요!")
             st.rerun()
 
-
 def gpt(prompt):    #response 생성 함수, 파일명에 대한 정보 안 나오게 수정해야함.
     response = client.responses.create(
         model="gpt-5-mini",
@@ -191,7 +190,7 @@ def analyze_image(client, image_file):    # 물건 최대 2개정도 제대로 �
     return response.output_text
 
 def create_vector(client):   # vector 저장여부 확인함수
-    TARGET_NAME = "recycle_PDF"
+    TARGET_NAME = "recyclego_PDF"
 
     # 1) 내 계정에 이미 같은 이름의 vector store가 있는지 확인
     vs_list = client.vector_stores.list(limit=50)
@@ -202,7 +201,8 @@ def create_vector(client):   # vector 저장여부 확인함수
     # 2) 없으면 새로 만들고 PDF 2개 업로드
     file_paths = [
         "data/recycle.pdf",
-        "data/foods.pdf",   # 새로 추가한 음식물 쓰레기 PDF
+        "data/foods.pdf",
+        "data/region.txt",
     ]
 
     # 실제로 존재하는 파일만 필터링 (혹시 한쪽이 없을 때 대비)
@@ -237,30 +237,63 @@ def show_image(m):
         st.markdown(m.get("content", ""))
 
 def show_main():
-    vector_store = create_vector(client)
-    st.session_state["vector_store_id"] = vector_store.id
+    # 🔹 이미 만들어져 있으면 재사용, 없으면 생성
+    if st.session_state.get("vector_store_id") is None:
+        vector_store = create_vector(client)
+        st.session_state["vector_store_id"] = vector_store.id
+
+    # 굳이 매번 create_vector 안 해도 됨
+    # vector_store = create_vector(client)
+    # st.session_state["vector_store_id"] = vector_store.id
 
     if "record" not in st.session_state:
-        st.session_state["record"] = [{"role": "developer", "content": """너는 한국의 분리수거 도우미야. 다른 내용 말고, 사용자가 말한 품목만을 어떻게 분리수거해야 하는지 주어진 자료를 통해 간단하고 정확하게 알려줘. 모르는 내용이 있다면, 모른다고 답하거나, 잘못된 물건이라고 답해줘."""}]
+        st.session_state["record"] = [{
+            "role": "developer",
+            "content": """너는 한국의 분리수거 도우미야. 다른 내용 말고, 사용자가 말한 품목만을 어떻게 분리수거해야 하는지 주어진 자료를 통해 간단하고 정확하게 알려줘. 모르는 내용이 있다면, 모른다고 답하거나, 잘못된 물건이라고 답해줘."""
+        }]
 
     for m in st.session_state["record"][1:]:
         show_chat(m)
 
-    if prompt := st.chat_input("분리수거 하고싶은 품목을 입력하세요."):   # 실제 prompt 입력, sidebar에 기능 분리. (또는 pages 활용)
+    if prompt := st.chat_input("분리수거 하고싶은 품목을 입력하세요."):
         if st.session_state["user_id"] is not None:
             db.add_mission_progress(user_id, "2", 1)
-        p1 = {"role":"user", "content": prompt}
+        p1 = {"role": "user", "content": prompt}
         st.session_state["record"].append(p1)
         show_chat(p1)
         response = gpt(st.session_state["record"])
-        p2 = {"role":"assistant", "content": response}
+        p2 = {"role": "assistant", "content": response}
         st.session_state["record"].append(p2)
         show_chat(p2)
 
 
+def show_mission(user_id):
+    st.divider()
+    st.subheader("오늘의 미션")
+
+    missions = db.get_or_create_today_missions(user_id)
+    if not missions:
+        st.info("오늘은 미션이 없습니다.")
+    else:
+        done = sum(1 for m in missions if m["completed"])
+        total = len(missions)
+        st.write(f"오늘 미션 진행도: **{done} / {total}**")
+        cols = st.columns(total)
+        for col, m, count in zip(cols, missions, [3, 2, 2]):
+            with col:
+                st.write(f"✅ {m['description']}")
+                st.write(f"보상: **+{m['reward']}점**")
+                if m["completed"]:
+                    st.success("완료됨")
+                else:
+                    if db.has_enough_actions_today(user_id, m['code'], count):
+                        if st.button("완료하기", key=f"mission_{m['user_mission_id']}"):
+                            db.complete_mission(m["user_mission_id"])
+                            st.success("미션 완료!")
+                            db.add_mission_progress(user_id, "3", 1)
+                            st.rerun()
+
 ### User Interface     ------------------------------------------------------------------------------------------------------------------------------
-
-
 
 db.init_db()
 db.seed_missions()
@@ -272,24 +305,25 @@ st.set_page_config(page_title="분리수Go!", page_icon="♻️")
 if "user_id" not in st.session_state:
     st.session_state["user_id"] = None
     st.session_state["username"] = None
-
 if "api_key" not in st.session_state:
     st.session_state["api_key"] = ""
-
 if "show_INFO" not in st.session_state:
     st.session_state["show_INFO"] = False
-
 if "show_login" not in st.session_state:
     st.session_state["show_login"] = False
-
 if "show_quiz" not in st.session_state:
     st.session_state["show_quiz"] = False
-
 if "show_chat" not in st.session_state:
     st.session_state["show_chat"] = True
-
+if "show_mission" not in st.session_state:
+    st.session_state["show_mission"] = True
+if "vector_store_id" not in st.session_state:
+    st.session_state["vector_store_id"] = None
+if "region_text" not in st.session_state:
+    st.session_state["region_text"] = None
 
 # --- 사이드바 ---
+
 with st.sidebar:
     st.title(":blue[분]:green[리]:yellow[수]:rainbow[Go!]")
 
@@ -318,12 +352,14 @@ with st.sidebar:
         st.session_state["show_login"] = False
         st.session_state["show_quiz"] = False
         st.session_state["show_INFO"] = False
+        st.session_state["show_mission"] = True
 
     if st.button("퀴즈"):
         st.session_state["show_chat"] = False
         st.session_state["show_login"] = False
         st.session_state["show_quiz"] = True
         st.session_state["show_INFO"] = False
+        st.session_state["show_mission"] = True
 
     st.divider()
 
@@ -334,6 +370,7 @@ with st.sidebar:
             st.session_state["show_chat"] = False
             st.session_state["show_quiz"] = False
             st.session_state["show_INFO"] = False
+            st.session_state["show_mission"] = False
     else:
         user_id = st.session_state["user_id"]
         username = st.session_state["username"]
@@ -354,14 +391,18 @@ with st.sidebar:
             st.session_state["user_id"] = None
             st.session_state["username"] = None
             st.session_state["show_login"] = False
+            st.session_state["show_mission"] = False
 
             if "record" in st.session_state:
                 del st.session_state["record"]
             if "image_record" in st.session_state:
                 del st.session_state["image_record"]
+            if "vector_store_id" in st.session_state:
+                del st.session_state["vector_store_id"]
+            if "region_text" in st.session_state:
+                del st.session_state["region_text"]
 
             st.rerun()
-
 
     # 🔹 INFO
     if st.button("INFO", key="sidebar_info"):
@@ -369,15 +410,52 @@ with st.sidebar:
         st.session_state["show_chat"] = False
         st.session_state["show_login"] = False
         st.session_state["show_quiz"] = False
+        st.session_state["show_mission"] = False
+
+    st.divider()
+    
+    if st.session_state["user_id"] is not None:
+        if db.is_premium(user_id):
+            st.subheader("지역 종량제 봉투 정보")
+
+            # 아직 vector store가 없으면 안내만
+            if not st.session_state.get("vector_store_id"):
+                st.caption("💡 챗봇을 한 번 사용하면, 여기에서 지역별 종량제 봉투 정보를 볼 수 있어요.")
+            else:
+                # region_text가 비어 있으면 한 번만 GPT 호출해서 채워두기
+                if not st.session_state.get("region_text"):
+                    region = db.get_region(st.session_state["user_id"]) or "경기도 수원시"
+
+                    prompt = f"""
+                    아래 자료에서 "{region}" 지역의 종량제 봉투 정보를 찾아줘. ㅇㅇ시 가 생략되었을 수도 있고, ㅁㅁ도 처럼 큰 단위만 써져있을 수도 있으니, 그건 보고 알아서 결정해줘!
+                    해당 지역에 정보가 없다면, 경기도 수원시 기준으로 대답해.
+
+                    출력 형식 (다른 내용은 쓰지 말고 이런 느낌으로만 출력해줘!):
+
+                    1L, 50원
+                    5L, 100원
+                    10L, 200원
+                    """
+
+                    response = st.session_state["client"].responses.create(
+                        model="gpt-5-mini",
+                        input=prompt,
+                        tools=[{
+                            "type": "file_search",
+                            "vector_store_ids": [st.session_state["vector_store_id"]],
+                        }],
+                        include=["file_search_call.results"]
+                    )
+                    st.session_state["region_text"] = response.output_text.strip()
+
+                # 줄바꿈 보존되게 코드블록으로 출력
+                st.markdown(f"```\n{st.session_state['region_text']}\n```")
 
 # --- OpenAI client 체크 ---
 client = st.session_state.get("client")
 if client is None:
     st.warning("사이드바에서 OpenAI API Key를 먼저 입력해 주세요.")
     st.stop()
-
-
-
 
 # --- 여기부터는 '로그인된 상태' 전용 메인 화면 ---
 
@@ -426,38 +504,8 @@ if st.session_state["user_id"] is not None:
                         show_image(p2)
                     except Exception as e:
                         st.error(f"이미지 분석 중 오류가 발생했습니다: {e}")
-    
-
-
-    
-# 미션을 항상 같은 종류로 처리하면 엄청 편해지긴 함 --> ㅇㅋㅇㅋㅇㅋ
-
-
-        st.divider()
-
-        st.subheader("오늘의 미션")
-
-    missions = db.get_or_create_today_missions(user_id)
-    if not missions:
-        st.info("오늘은 미션이 없습니다.")
-    else:
-        done = sum(1 for m in missions if m["completed"])
-        total = len(missions)
-        st.write(f"오늘 미션 진행도: **{done} / {total}**")
-        cols = st.columns(total)
-        for col, m, count in zip(cols, missions, [3, 2, 2]):
-            with col:
-                st.write(f"✅ {m['description']}")
-                st.write(f"보상: **+{m['reward']}점**")
-                if m["completed"]:
-                    st.success("완료됨")
-                else:
-                    if db.has_enough_actions_today(user_id, m['code'], count):
-                        if st.button("완료하기", key=f"mission_{m['user_mission_id']}"):
-                            db.complete_mission(m["user_mission_id"])
-                            st.success("미션 완료!")
-                            db.add_mission_progress(user_id, "3", 1)
-                            st.rerun()
+    if st.session_state["show_mission"]:
+        show_mission(user_id)
 
     if st.session_state["show_chat"]:
         show_main()
@@ -475,11 +523,13 @@ else:
         show_main()
 
 # --- INFO 페이지 ---
+
 if st.session_state["show_INFO"]:
     st.divider()
     show_INFO()
 
 # --- 로그인 화면 (선택 사항) ---
+
 if st.session_state["user_id"] is None and st.session_state["show_login"]:
     st.divider()
     show_auth()   # ✅ 메인 영역에 로그인/회원가입 UI 렌더링
