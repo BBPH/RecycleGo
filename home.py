@@ -427,8 +427,7 @@ if st.session_state["user_id"] is not None:
                     except Exception as e:
                         st.error(f"이미지 분석 중 오류가 발생했습니다: {e}")
     
-    if st.session_state["show_chat"]:
-        show_main()
+
 
     
 # 미션을 항상 같은 종류로 처리하면 엄청 편해지긴 함 --> ㅇㅋㅇㅋㅇㅋ
@@ -459,6 +458,9 @@ if st.session_state["user_id"] is not None:
                             st.success("미션 완료!")
                             db.add_mission_progress(user_id, "3", 1)
                             st.rerun()
+
+    if st.session_state["show_chat"]:
+        show_main()
 
     if st.session_state["show_quiz"]:
         show_quiz(user_id)
