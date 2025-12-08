@@ -15,6 +15,7 @@ import random
 # 랭킹   흠...  고민해봐야함. 일단 남는시간동안 만들어보긴 해야지---
 # 퀴즈 연달아서 뜨게 만들기(3개)
 # 퀴즈 중복 고쳐달라고 업로드 할 것
+# 대형 폐기물에 관한 정보도 pdf 업로드 필요할 듯
 
 
 ### function list
@@ -72,7 +73,7 @@ def show_quiz(user_id):
     # 🔹 모든 퀴즈를 한 번에 풀로 가져오기
     if "quizzes" not in st.session_state:
         all_quizzes = []
-        for item_name in ["1", "2", "3", "4"]:
+        for item_name in ["1", "2", "3", "4", "5", "6", "7", "8"]:
             all_quizzes.extend(db.get_quizzes_by_item(item_name))
         st.session_state["quizzes"] = all_quizzes
 
@@ -162,7 +163,6 @@ def gpt(prompt):    #response 생성 함수, 파일명에 대한 정보 안 나�
         }],
         include=["file_search_call.results"]
     )
-    db.add_mission_progress(user_id, "2", 1)
     return response.output_text
 
 def analyze_image(client, image_file):    # 물건 최대 2개정도 제대로 인식함.
@@ -354,9 +354,14 @@ with st.sidebar:
             st.session_state["user_id"] = None
             st.session_state["username"] = None
             st.session_state["show_login"] = False
-            del st.session_state["record"]
-            del st.session_state["image_record"]
+
+            if "record" in st.session_state:
+                del st.session_state["record"]
+            if "image_record" in st.session_state:
+                del st.session_state["image_record"]
+
             st.rerun()
+
 
     # 🔹 INFO
     if st.button("INFO", key="sidebar_info"):
@@ -441,7 +446,7 @@ if st.session_state["user_id"] is not None:
         total = len(missions)
         st.write(f"오늘 미션 진행도: **{done} / {total}**")
         cols = st.columns(total)
-        for col, m, count in zip(cols, missions, [3, 4, 2]):
+        for col, m, count in zip(cols, missions, [3, 2, 2]):
             with col:
                 st.write(f"✅ {m['description']}")
                 st.write(f"보상: **+{m['reward']}점**")
