@@ -14,7 +14,7 @@ import random
 # 퀴즈 일정 갯수 이상, 질의응답 횟수, 일일미션 전부 완수하기 --> 미션 갯수 적으면할만할수도...?????
 # 랭킹   흠...  고민해봐야함. 일단 남는시간동안 만들어보긴 해야지---
 # 퀴즈 연달아서 뜨게 만들기(3개)
-
+# 퀴즈 중복 고쳐달라고 업로드 할 것
 
 
 ### function list
@@ -247,7 +247,8 @@ def show_main():
         show_chat(m)
 
     if prompt := st.chat_input("분리수거 하고싶은 품목을 입력하세요."):   # 실제 prompt 입력, sidebar에 기능 분리. (또는 pages 활용)
-        db.add_mission_progress(user_id, "2", 1)
+        if st.session_state["user_id"] is not None:
+            db.add_mission_progress(user_id, "2", 1)
         p1 = {"role":"user", "content": prompt}
         st.session_state["record"].append(p1)
         show_chat(p1)

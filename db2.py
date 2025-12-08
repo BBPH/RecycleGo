@@ -75,14 +75,16 @@ def init_db():
     )
 
     # 🔹 유저별 일일 퀴즈 기록 테이블
+    #    + 오늘 사용한 퀴즈 id 목록(used_quiz_ids, JSON 문자열) 추가
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS user_daily_quiz (
-            id        INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id   INTEGER NOT NULL,
-            date      TEXT    NOT NULL,   -- YYYY-MM-DD
-            solved    INTEGER NOT NULL DEFAULT 0,  -- 오늘 퀴즈 클리어 여부 (0/1)
-            solved_at TEXT,               -- 처음 클리어한 시각
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id      INTEGER NOT NULL,
+            date         TEXT    NOT NULL,   -- YYYY-MM-DD
+            solved       INTEGER NOT NULL DEFAULT 0,  -- 오늘 퀴즈 클리어 여부 (0/1)
+            solved_at    TEXT,               -- 처음 클리어한 시각
+            used_quiz_ids TEXT,              -- 오늘 시도한 퀴즈 id 목록(JSON)
             UNIQUE(user_id, date),
             FOREIGN KEY(user_id) REFERENCES users(id)
         )
@@ -98,7 +100,7 @@ def init_db():
             mission_id INTEGER NOT NULL,
             date       TEXT NOT NULL,        -- YYYY-MM-DD 기준
             count      INTEGER NOT NULL DEFAULT 0,
-            data_json  TEXT,                 -- JSON 문자열(추가 정보: 퀴즈 id, 정답 여부 등)
+            data_json  TEXT,                 -- JSON 문자열(추가 정보)
             created_at TEXT NOT NULL,
             UNIQUE(user_id, mission_id, date),
             FOREIGN KEY(user_id) REFERENCES users(id),
@@ -572,6 +574,116 @@ def get_today_quiz_status(user_id: int):
     }
 
 
+def get_today_used_quiz_ids(user_id: int) -> list[int]:
+    """
+    오늘 user가 한 번이라도 시도한 퀴즈 id 목록.
+    """
+    today = datetime.now().date().isoformat()
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT used_quiz_ids
+        FROM user_daily_quiz
+        WHERE user_id = ? AND date = ?
+        """,
+        (user_id, today),
+    )
+    row = cur.fetchone()
+    conn.close()
+
+    if row is None or row[0] is None:
+        return []
+
+    try:
+        return json.loads(row[0])
+    except Exception:
+        return []
+
+
+def add_today_used_quiz(user_id: int, quiz_id: int):
+    """
+    오늘 날짜 기준으로 used_quiz_ids에 quiz_id를 추가.
+    (중복이면 무시)
+    """
+    today = datetime.now().date().isoformat()
+
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        SELECT used_quiz_ids, solved, solved_at
+        FROM user_daily_quiz
+        WHERE user_id = ? AND date = ?
+        """,
+        (user_id, today),
+    )
+    row = cur.fetchone()
+
+    if row is None:
+        used_list = [quiz_id]
+        used_json = json.dumps(used_list, ensure_ascii=False)
+        cur.execute(
+            """
+            INSERT INTO user_daily_quiz (user_id, date, solved, solved_at, used_quiz_ids)
+            VALUES (?, ?, 0, NULL, ?)
+            """,
+            (user_id, today, used_json),
+        )
+    else:
+        used_json, solved, solved_at = row
+        try:
+            used_list = json.loads(used_json) if used_json else []
+        except Exception:
+            used_list = []
+
+        if quiz_id not in used_list:
+            used_list.append(quiz_id)
+            new_used_json = json.dumps(used_list, ensure_ascii=False)
+            cur.execute(
+                """
+                UPDATE user_daily_quiz
+                SET used_quiz_ids = ?
+                WHERE user_id = ? AND date = ?
+                """,
+                (new_used_json, user_id, today),
+            )
+
+    conn.commit()
+    conn.close()
+
+
+def seed_quizzes():
+    """quizzes 테이블이 비어 있으면 기본 퀴즈 몇 개 넣기."""
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("SELECT COUNT(*) FROM quizzes")
+    (count,) = cur.fetchone()
+
+    if count == 0:
+        data = [
+            ("1", "다음 중 분리수거를 할 수 없는 것은?", ["종이컵", "스티로폼", "뽁뽁이", "테이프"], 3),
+            ("2", "다음 보기 중 음식물 쓰레기는?", ["수박 껍질", "양파 껍질", "생선 가시", "고추장"], 0),
+            ("3", "다음 중 종이로 배출할 수 없는 것은?", ["각종 고지서", "과자박스", "영수증", "포스트잇"], 2),
+            ("4", "다음 보기 중 재활용이 가능한 것은?", ["우산", "커피 캡슐", "치약 튜브", "빨대"], 2),
+        ]
+
+        for item_name, question, options, answer_idx in data:
+            options_json = json.dumps(options, ensure_ascii=False)
+            cur.execute(
+                """
+                INSERT INTO quizzes (item_name, question, options, answer_idx)
+                VALUES (?, ?, ?, ?)
+                """,
+                (item_name, question, options_json, answer_idx),
+            )
+        conn.commit()
+
+    conn.close()
+
+
 # ---------------- 미션 progress/조건 체크 ----------------
 
 def get_mission_id_by_code(code: str) -> int | None:
@@ -630,7 +742,7 @@ def add_mission_progress(user_id: int, mission_code: str, delta: int = 1):
         cur.execute(
             """
             UPDATE mission_action
-            SET count = count + ?
+            SET count = count + ? 
             WHERE user_id = ? AND mission_id = ? AND date = ?
             """,
             (delta, user_id, mission_id, today),
